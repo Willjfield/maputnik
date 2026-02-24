@@ -3,6 +3,9 @@ logs
 *.log
 *.swp
 *.swo
+.env
+.env.*
+!env.example
 
 # Runtime data
 pids
