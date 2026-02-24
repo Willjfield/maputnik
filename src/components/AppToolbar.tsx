@@ -11,7 +11,8 @@ import {
   MdLanguage,
   MdSave,
   MdPublic,
-  MdCode
+  MdCode,
+  MdChat
 } from "react-icons/md";
 import pkgJson from "../../package.json";
 //@ts-ignore
@@ -24,7 +25,7 @@ import type { OnStyleChangedCallback } from "../libs/definitions";
 const browser = detect();
 const colorAccessibilityFiltersEnabled = ["chrome", "firefox"].indexOf(browser!.name) > -1;
 
-export type ModalTypes = "settings" | "sources" | "open" | "shortcuts" | "export" | "debug" | "globalState" | "codeEditor";
+export type ModalTypes = "settings" | "sources" | "open" | "shortcuts" | "export" | "debug" | "globalState" | "codeEditor" | "chat";
 
 type IconTextProps = {
   children?: React.ReactNode
@@ -233,6 +234,10 @@ class AppToolbarInternal extends React.Component<AppToolbarInternalProps> {
           <ToolbarAction wdKey="nav:code-editor" onClick={() => this.props.onToggleModal("codeEditor")}>
             <MdCode />
             <IconText>{t("Code Editor")}</IconText>
+          </ToolbarAction>
+          <ToolbarAction wdKey="nav:chat" onClick={() => this.props.onToggleModal("chat")}>
+            <MdChat />
+            <IconText>{t("Chat")}</IconText>
           </ToolbarAction>
           <ToolbarAction wdKey="nav:sources" onClick={() => this.props.onToggleModal("sources")}>
             <MdLayers />

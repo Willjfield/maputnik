@@ -314,3 +314,79 @@
   color: currentColor;
   cursor: pointer;
 }
+
+// Style chat panel (natural language edit)
+.maputnik-style-chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+  max-height: 70vh;
+
+  &__messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: vars.$margin-3;
+    display: flex;
+    flex-direction: column;
+    gap: vars.$margin-2;
+  }
+
+  &__placeholder {
+    color: vars.$color-lowgray;
+    font-size: vars.$font-size-5;
+    margin: 0;
+  }
+
+  &__message {
+    padding: vars.$margin-2 vars.$margin-3;
+    border-radius: 4px;
+    font-size: vars.$font-size-5;
+    max-width: 90%;
+
+    &--user {
+      align-self: flex-end;
+      background: vars.$color-midgray;
+      color: vars.$color-white;
+    }
+
+    &--assistant {
+      align-self: flex-start;
+      background: vars.$color-gray;
+      color: vars.$color-white;
+    }
+  }
+
+  &__form {
+    display: flex;
+    gap: vars.$margin-2;
+    padding: vars.$margin-3;
+    border-top: 1px solid vars.$color-gray;
+    align-items: flex-end;
+  }
+
+  &__input {
+    flex: 1;
+    min-height: 52px;
+    padding: vars.$margin-2 vars.$margin-3;
+    font-family: vars.$font-family;
+    font-size: vars.$font-size-5;
+    background: vars.$color-black;
+    color: vars.$color-white;
+    border: 1px solid vars.$color-gray;
+    border-radius: 4px;
+    resize: vertical;
+
+    &:focus {
+      outline: none;
+      border-color: vars.$color-lowgray;
+    }
+
+    &:disabled {
+      opacity: 0.7;
+    }
+  }
+
+  &__submit {
+    flex-shrink: 0;
+  }
+}

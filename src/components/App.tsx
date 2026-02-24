@@ -27,6 +27,7 @@ import ModalOpen from "./modals/ModalOpen";
 import ModalShortcuts from "./modals/ModalShortcuts";
 import ModalDebug from "./modals/ModalDebug";
 import ModalGlobalState from "./modals/ModalGlobalState";
+import ModalChat from "./modals/ModalChat";
 
 import {downloadGlyphsMetadata, downloadSpriteMetadata} from "../libs/metadata";
 import style from "../libs/style";
@@ -119,6 +120,7 @@ type AppState = {
     debug: boolean
     globalState: boolean
     codeEditor: boolean
+    chat: boolean
   }
   fileHandle: FileSystemFileHandle | null
 };
@@ -159,7 +161,8 @@ export default class App extends React.Component<any, AppState> {
         export: false,
         debug: false,
         globalState: false,
-        codeEditor: false
+        codeEditor: false,
+        chat: false
       },
       maplibreGlDebugOptions: {
         showTileBoundaries: false,
@@ -977,6 +980,12 @@ export default class App extends React.Component<any, AppState> {
         onStyleChanged={this.onStyleChanged}
         isOpen={this.state.isOpen.globalState}
         onOpenToggle={() => this.toggleModal("globalState")}
+      />
+      <ModalChat
+        mapStyle={this.state.mapStyle}
+        onStyleChanged={this.onStyleChanged}
+        isOpen={this.state.isOpen.chat}
+        onOpenToggle={() => this.toggleModal("chat")}
       />
     </div>;
 

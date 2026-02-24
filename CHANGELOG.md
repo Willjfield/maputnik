@@ -1,6 +1,7 @@
 ## main
 
 ### ✨ Features and improvements
+- Add chat feature to edit map styles with natural language prompts (uses Claude via Anthropic API). For local dev, the Vite server proxies requests to avoid CORS—set `ANTHROPIC_API_KEY` in `.env` (no client-side key needed)
 - Added translation to "Links" in debug modal
 - Add support for hillshade's color arrays and relief-color elevation expression
 - Change layers icons to make them a bit more distinct

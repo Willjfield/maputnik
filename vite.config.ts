@@ -2,6 +2,7 @@ import replace from "@rollup/plugin-replace";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import istanbul from "vite-plugin-istanbul";
+import { anthropicProxyPlugin } from "./vite-plugin-anthropic-proxy";
 
 export default defineConfig(({ mode }) => ({
   server: {
@@ -11,6 +12,7 @@ export default defineConfig(({ mode }) => ({
     sourcemap: true
   },
   plugins: [
+    anthropicProxyPlugin(),
     replace({
       preventAssignment: true,
       include: /\/jsonlint-lines-primitives\/lib\/jsonlint.js/,

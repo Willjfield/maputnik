@@ -36,6 +36,8 @@ Run the development server in the background with Vite:
 nohup npm run start &
 ```
 
+For the style-editing chat (Claude), set `ANTHROPIC_API_KEY` in `.env`. The dev server proxies requests to the Anthropic API to avoid CORS, so the key stays server-side.
+
 Then start the Cypress tests with:
 
 ```
