@@ -34,7 +34,7 @@
   "Code Editor": "Editor codice",
   "Chat": "Chat",
   "Edit style with AI": "Modifica stile con AI",
-  "Style chat placeholder": "Descrivi le modifiche in linguaggio naturale, es. \"le etichette si sovrappongono\" o \"stile pulito per pedoni\".",
+  "Style chat placeholder": "Spiega come vorresti stilizzare la mappa e posso modificare il file style.json per implementarla.",
   "Style chat input placeholder": "Inserisci richiesta…",
   "Send": "Invia",
   "Style updated.": "Stile aggiornato.",

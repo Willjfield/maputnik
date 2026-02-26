@@ -34,7 +34,7 @@
   "Code Editor": "コードエディタ",
   "Chat": "チャット",
   "Edit style with AI": "AIでスタイルを編集",
-  "Style chat placeholder": "自然言語で変更を指示してください。例：「ラベルが重なるのでフォントサイズを小さく」「歩行者向けのすっきりしたスタイル」",
+  "Style chat placeholder": "地図のスタイルを変更したい場合は、自然言語で指示してください。例：「ラベルが重なるのでフォントサイズを小さく」「歩行者向けのすっきりしたスタイル」",
   "Style chat input placeholder": "リクエストを入力…",
   "Send": "送信",
   "Style updated.": "スタイルを更新しました。",

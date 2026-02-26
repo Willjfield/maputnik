@@ -34,7 +34,7 @@
   "Code Editor": "코드 편집기",
   "Chat": "채팅",
   "Edit style with AI": "AI로 스타일 편집",
-  "Style chat placeholder": "자연어로 수정 내용을 입력하세요. 예: \"라벨이 겹침\" 또는 \"보행자용 깔끔한 스타일\".",
+  "Style chat placeholder": "지도의 스타일을 변경하고 싶으면 자연어로 수정 내용을 입력하세요. 예: \"라벨이 겹침\" 또는 \"보행자용 깔끔한 스타일\".",
   "Style chat input placeholder": "요청 입력…",
   "Send": "보내기",
   "Style updated.": "스타일이 업데이트되었습니다.",

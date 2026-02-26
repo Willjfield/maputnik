@@ -83,6 +83,37 @@
   @include mixins.flex-column;
 }
 
+// Floating chat window (draggable, no underlay)
+.maputnik-chat-float {
+  position: fixed;
+  z-index: 1000;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  pointer-events: auto;
+
+  .maputnik-modal {
+    display: flex;
+    flex-direction: column;
+    max-height: 70vh;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .maputnik-modal-scroller {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+.maputnik-chat-float__titlebar {
+  cursor: move;
+  user-select: none;
+
+  button {
+    cursor: pointer;
+  }
+}
+
 //OPEN MODAL
 .maputnik-upload-button {
   @extend .maputnik-big-button !optional; /* stylelint-disable-line */

@@ -358,10 +358,22 @@
 
   &__form {
     display: flex;
+    flex-direction: column;
     gap: vars.$margin-2;
     padding: vars.$margin-3;
     border-top: 1px solid vars.$color-gray;
-    align-items: flex-end;
+  }
+
+  &__form-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: vars.$margin-2;
+  }
+
+  &__hint {
+    font-size: vars.$font-size-6;
+    color: vars.$color-lowgray;
   }
 
   &__input {

@@ -34,7 +34,7 @@
   "Code Editor": "Code-Editor",
   "Chat": "Chat",
   "Edit style with AI": "Stil mit KI bearbeiten",
-  "Style chat placeholder": "Stiländerungen in natürlicher Sprache beschreiben, z. B. „Labels überlappen sich – Schriftgröße verkleinern“ oder „Ruhiger, moderner Stil für Fußgänger“.",
+  "Style chat placeholder": "Beschreibe, wie du den Stil der Karte ändern möchtest, und ich kann die style.json-Datei bearbeiten, um dies zu implementieren.",
   "Style chat input placeholder": "Anfrage eingeben…",
   "Send": "Senden",
   "Style updated.": "Stil aktualisiert.",

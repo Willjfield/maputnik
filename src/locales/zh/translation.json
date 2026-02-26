@@ -34,7 +34,7 @@
   "Code Editor": "代码编辑器",
   "Chat": "对话",
   "Edit style with AI": "用 AI 编辑样式",
-  "Style chat placeholder": "用自然语言描述修改，例如「标签重叠，请缩小字号」或「简洁现代的步行导航风格」。",
+  "Style chat placeholder": "告诉我你想如何样式化地图，我可以编辑 style.json 文件来实现它。",
   "Style chat input placeholder": "输入请求…",
   "Send": "发送",
   "Style updated.": "样式已更新。",
