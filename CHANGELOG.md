@@ -1,6 +1,7 @@
 ## main
 
 ### ✨ Features and improvements
+- Style chat: add optional image upload to match map style from a reference image (uses Anthropic vision; attach JPEG/PNG/GIF/WebP)
 - Style chat: use patch-based responses (RFC 6902) and Claude Haiku by default to reduce cost and latency; model returns only JSON Patch ops, applied locally
 - Add chat feature to edit map styles with natural language prompts (uses Claude via Anthropic API). For local dev, the Vite server proxies requests to avoid CORS—set `ANTHROPIC_API_KEY` in `.env` (no client-side key needed)
 - Added translation to "Links" in debug modal

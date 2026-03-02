@@ -342,6 +342,7 @@
     border-radius: 4px;
     font-size: vars.$font-size-5;
     max-width: 90%;
+    white-space: pre-line;
 
     &--user {
       align-self: flex-end;
@@ -369,6 +370,74 @@
     align-items: center;
     justify-content: space-between;
     gap: vars.$margin-2;
+  }
+
+  &__form-left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: vars.$margin-2;
+  }
+
+  &__attach-input {
+    position: absolute;
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  &__attach-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid vars.$color-gray;
+    border-radius: 6px;
+    background: vars.$color-black;
+    color: vars.$color-lowgray;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      color: vars.$color-white;
+      border-color: vars.$color-lowgray;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+  }
+
+  &__attach-icon {
+    font-size: 16px;
+  }
+
+  &__attached {
+    font-size: vars.$font-size-6;
+    color: vars.$color-lowgray;
+  }
+
+  &__clear-image {
+    margin-left: vars.$margin-1;
+    padding: 0 4px;
+    border: none;
+    background: transparent;
+    color: vars.$color-lowgray;
+    cursor: pointer;
+    font-size: 1.2em;
+    line-height: 1;
+
+    &:hover {
+      color: vars.$color-white;
+    }
+  }
+
+  &__image-badge {
+    font-size: vars.$font-size-6;
+    color: vars.$color-lowgray;
   }
 
   &__hint {

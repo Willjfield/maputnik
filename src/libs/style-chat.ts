@@ -6,15 +6,21 @@ import type { StyleSpecificationWithId } from "./definitions";
 const STYLE_SPEC_REF = "https://maplibre.org/maplibre-style-spec/";
 
 /** System prompt for patch mode: model returns only a JSON Patch (RFC 6902) array. */
-function getSystemPromptPatch(): string {
-  return `You edit MapLibre GL map styles. You receive the current style JSON and a user request. Return ONLY a JSON Patch (RFC 6902) array that, when applied to the style, makes the requested change.
+function getSystemPromptPatch(hasImage?: boolean): string {
+  const base = `You edit MapLibre GL map styles. You receive the current style JSON and a user request. Return ONLY a JSON Patch (RFC 6902) array that, when applied to the style, makes the requested change.
 
 Rules:
-- Output nothing but a JSON array of patch operations. No markdown, no explanation, no commentary before or after the array. Example: [{"op":"replace","path":"/layers/roads_minor/paint/line-color","value":"#d8d8d8"}]
+- Start your response with the character [. Output nothing but a JSON array of patch operations—no introductory text, explanation, or commentary before or after the array. Example: [{"op":"replace","path":"/layers/roads_minor/paint/line-color","value":"#d8d8d8"}]
 - Paths use JSON Pointer with layer id (not index): /layers/<layer_id>/paint/line-color, e.g. /layers/roads_minor/paint/line-color or /layers/landuse_park/paint/fill-color. We resolve layer id to index automatically. The path must end at a property name. Never use array indices on property values (no /paint/line-color/0 or /3). Paint properties like line-color, fill-color are strings or expressions; set the whole value with one replace/add.
 - Use "replace" for existing properties, "add" for new ones. For paint or layout properties that may be missing (e.g. line-dasharray, line-cap), use "add" so the patch works whether the property exists or not. Preserve id, sources, glyphs, sprite unless the user asks to change them.
 - For label overlap: adjust symbol layers' layout/paint (text-size, text-max-width, text-optional, symbol-spacing, text-allow-overlap). Spec: ${STYLE_SPEC_REF}
 - Only include operations that change something.`;
+  if (hasImage) {
+    return `${base}
+
+When the user attaches a reference map image: analyze the image and produce a JSON Patch that makes the current style match the look of that map as much as possible. Consider colors (water, land, roads, labels), road prominence and line widths, label density and styling, and overall visual style.`;
+  }
+  return base;
 }
 
 /**
@@ -48,9 +54,15 @@ function resolveLayerIdsInPatch(
   });
 }
 
+export type AttachedImage = {
+  dataBase64: string;
+  mediaType: string;
+};
+
 export type EditStyleParams = {
   style: StyleSpecificationWithId;
   prompt: string;
+  image?: AttachedImage;
   apiKey?: string;
   apiUrl?: string;
   conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -108,11 +120,53 @@ function extractPatchArrayFromText(raw: string): string | null {
   return null;
 }
 
+/** If the model included prose before the patch, return it (trimmed, length-limited). */
+function extractProseBeforePatch(raw: string): string | null {
+  const trimmed = raw.trim();
+  const startMatch = trimmed.match(/\[\s*\{\s*\\?["']op["']/);
+  if (!startMatch || startMatch.index === undefined) return null;
+  const prose = trimmed.slice(0, startMatch.index).trim();
+  if (!prose) return null;
+  const maxLen = 800;
+  return prose.length <= maxLen ? prose : prose.slice(0, maxLen) + "…";
+}
+
+/**
+ * Build a short summary of which layers and properties were changed by the patch.
+ */
+function summarizePatch(patch: Operation[], style: StyleSpecificationWithId): string {
+  const layers = style.layers;
+  if (!Array.isArray(layers)) return "";
+  const byLayer = new Map<string, string[]>();
+  for (const op of patch) {
+    if (!op.path || typeof op.path !== "string" || !op.path.startsWith("/layers/")) continue;
+    const segments = op.path.split("/").filter(Boolean);
+    if (segments.length < 3) continue;
+    const layerKey = segments[1];
+    const propPath = segments.slice(2).join(".");
+    const layerIndex = /^\d+$/.test(layerKey) ? parseInt(layerKey, 10) : -1;
+    const layerId =
+      layerIndex >= 0 && layers[layerIndex]
+        ? (layers[layerIndex] as { id?: string }).id
+        : layerKey;
+    const id = typeof layerId === "string" ? layerId : layerKey;
+    const list = byLayer.get(id) ?? [];
+    if (!list.includes(propPath)) list.push(propPath);
+    byLayer.set(id, list);
+  }
+  if (byLayer.size === 0) return "";
+  const lines = Array.from(byLayer.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, props]) => `• ${id}: ${props.join(", ")}`);
+  return "Layers changed:\n" + lines.join("\n");
+}
+
 const ANTHROPIC_PROXY_PATH = "/api/anthropic/messages";
 
 /** Default to Haiku for lower cost/latency; override with VITE_ANTHROPIC_MODEL. */
 const DEFAULT_MODEL = "claude-3-5-haiku-latest";
-const PATCH_MAX_TOKENS = 4096;
+/** Allow long patches (e.g. many layers); increase if responses are truncated (stop_reason: max_tokens). */
+const PATCH_MAX_TOKENS = 8192;
 
 /**
  * Call Anthropic's Claude API to edit the map style from a natural language prompt.
@@ -122,6 +176,7 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
   const {
     style,
     prompt,
+    image,
     apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined,
     apiUrl = (import.meta.env.VITE_ANTHROPIC_API_URL as string | undefined) || (import.meta.env.DEV ? ANTHROPIC_PROXY_PATH : "https://api.anthropic.com/v1/messages"),
     conversationHistory = [],
@@ -132,12 +187,25 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
     return { ok: false, error: "Missing API key. Set VITE_ANTHROPIC_API_KEY or, in dev, ANTHROPIC_API_KEY on the server." };
   }
 
-  const systemPrompt = getSystemPromptPatch();
+  const textContent = `Current style JSON:\n\`\`\`json\n${JSON.stringify(style, null, 2)}\n\`\`\`\n\nUser request: ${prompt}`;
+  const systemPrompt = getSystemPromptPatch(!!image);
   const recentHistory = conversationHistory.slice(-6).map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-  const currentTurn: { role: "user"; content: string } = {
-    role: "user",
-    content: `Current style JSON:\n\`\`\`json\n${JSON.stringify(style, null, 2)}\n\`\`\`\n\nUser request: ${prompt}`,
-  };
+  const currentTurn: { role: "user"; content: string | Array<{ type: "text" | "image"; text?: string; source?: { type: "base64"; media_type: string; data: string } }> } = image
+    ? {
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: image.mediaType,
+            data: image.dataBase64,
+          },
+        },
+        { type: "text", text: textContent },
+      ],
+    }
+    : { role: "user", content: textContent };
   const messages = [...recentHistory, currentTurn];
 
   const body = {
@@ -276,7 +344,10 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
       const msg = errList[0]?.message ?? "Invalid style after patch.";
       return { ok: false, error: `Style invalid after patch: ${msg}` };
     }
-    return { ok: true, style: withId };
+    const summary = summarizePatch(patch, style);
+    const prose = extractProseBeforePatch(rawText);
+    const explanation = [prose, summary].filter(Boolean).join("\n\n");
+    return { ok: true, style: withId, explanation: explanation || undefined };
   }
 
   // Fallback: full style object (e.g. model returned full style anyway)
