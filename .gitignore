@@ -37,7 +37,7 @@ public
 /errorShots
 /old
 /cypress/screenshots
-#/dist/
+/dist/
 /desktop/version.go
 
 # IDE
