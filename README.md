@@ -101,6 +101,13 @@ You can also see the tests as they run or select which suites to run by executin
 npm run cy:open
 ```
 
+## Deploying to GitHub Pages (e.g. your fork)
+
+The app is built with **base URL** `/maputnik/` so it works when served at `https://<user>.github.io/maputnik/`. Do **not** serve the repository source: you must deploy the **build output** or assets will 404.
+
+- **Using the deploy workflow (recommended):** Push to `main`. In the repo **Settings → Pages**, set **Build and deployment → Source** to **GitHub Actions**. The existing `deploy` workflow will run on push, run `npm run build`, and publish the `dist/` folder. Your site will be at `https://<user>.github.io/maputnik/`.
+- **Manual deploy:** Run `npm run build`, then upload the **contents** of the `dist/` directory to the branch or path that GitHub Pages serves (e.g. the root of a `gh-pages` branch, or the `maputnik/` subfolder if your site root is the repo).
+
 ## Release process
 
 1. Review [`CHANGELOG.md`](/CHANGELOG.md)
