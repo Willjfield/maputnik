@@ -3,7 +3,7 @@ import { MdImage } from "react-icons/md";
 import { withTranslation, type WithTranslation } from "react-i18next";
 import type { StyleSpecificationWithId } from "../libs/definitions";
 import type { OnStyleChangedCallback } from "../libs/definitions";
-import { editStyleWithLLM, type AttachedImage } from "../libs/style-chat";
+import { editStyleWithLLM, extractMapContext, type AttachedImage } from "../libs/style-chat";
 
 /** Turn URLs in a string into clickable links; returns React nodes for use in JSX. */
 function linkify(text: string): React.ReactNode {
@@ -36,6 +36,7 @@ type StyleChatPanelState = {
   loading: boolean;
   input: string;
   attachedImage: AttachedImage | null;
+  mapContext: string | null;
 };
 
 class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps, StyleChatPanelState> {
@@ -49,6 +50,7 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
       loading: false,
       input: "",
       attachedImage: null,
+      mapContext: null,
     };
   }
 
@@ -83,6 +85,7 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
       prompt,
       image: attachedImage ?? undefined,
       conversationHistory: history.slice(-6),
+      mapContext: this.state.mapContext ?? undefined,
     });
 
     if (result.ok) {
@@ -94,10 +97,22 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
       const assistantContent = result.explanation
         ? `${this.props.t("Style updated.")} ${result.explanation}`
         : this.props.t("Style updated.");
+      const newMessages: ChatMessage[] = [...this.state.messages, userMessage, { role: "assistant", content: assistantContent }];
+      const userMessageCount = newMessages.filter((m) => m.role === "user").length;
       this.setState((s) => ({
         messages: [...s.messages, { role: "assistant", content: assistantContent }],
         loading: false,
       }));
+      if (userMessageCount >= 1 && userMessageCount <= 3) {
+        const fullHistory = [...history, { role: "assistant" as const, content: assistantContent }];
+        extractMapContext({
+          conversationHistory: fullHistory.map((m) => ({ role: m.role, content: m.content })),
+        }).then((extracted) => {
+          if (extracted?.trim()) {
+            this.setState((s) => ({ mapContext: s.mapContext || extracted }));
+          }
+        });
+      }
     } else {
       this.setState((s) => ({
         messages: [...s.messages, { role: "assistant", content: result.error }],
@@ -158,11 +173,16 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
       <div className="maputnik-style-chat-panel">
         <div className="maputnik-style-chat-panel__messages">
           {messages.length === 0 && (
-            <p className="maputnik-style-chat-panel__placeholder">
-              {linkify(
-                t("Tell me how you'd like to style the map and I'll try my best to edit the style.json file to implement it. If you have any problems, submit an issue or fork it from the original: https://github.com/maplibre/maputnik or my fork: https://github.com/Willjfield/maputnik")
-              )}
-            </p>
+            <div className="maputnik-style-chat-panel__placeholder">
+              <p>
+                {linkify(
+                  t("Tell me how you'd like to style the map and I'll try my best to edit the style.json file to implement it. If you have any problems, submit an issue or fork it from the original: https://github.com/maplibre/maputnik or my fork: https://github.com/Willjfield/maputnik")
+                )}
+              </p>
+              <p className="maputnik-style-chat-panel__placeholder-tip">
+                {t("Optional: describing what this map is for and who will use it helps me suggest more tailored and accessible styles.")}
+              </p>
+            </div>
           )}
           {messages.map((msg, i) => (
             <div
@@ -178,8 +198,14 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
             </div>
           ))}
           {loading && (
-            <div className="maputnik-style-chat-panel__message maputnik-style-chat-panel__message--assistant">
-              {t("Loading…")}
+            <div className="maputnik-style-chat-panel__message maputnik-style-chat-panel__message--assistant maputnik-style-chat-panel__thinking">
+              <span className="maputnik-style-chat-panel__thinking-spinner" aria-hidden="true" />
+              <span className="maputnik-style-chat-panel__thinking-text">
+                {t("Thinking")}
+                <span className="maputnik-style-chat-panel__thinking-dots" aria-hidden="true">
+                  <span>.</span><span>.</span><span>.</span>
+                </span>
+              </span>
             </div>
           )}
           <div ref={this.messagesEndRef} />

@@ -66,6 +66,7 @@ export type EditStyleParams = {
   apiKey?: string;
   apiUrl?: string;
   conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+  mapContext?: string;
 };
 
 export type EditStyleResult =
@@ -131,6 +132,91 @@ function extractProseBeforePatch(raw: string): string | null {
   return prose.length <= maxLen ? prose : prose.slice(0, maxLen) + "…";
 }
 
+/** Get a value from an object by JSON Pointer; supports ~0 and ~1 escaping. */
+function getValueByJsonPointer(obj: unknown, pointer: string): unknown {
+  if (!pointer.startsWith("/")) return undefined;
+  const segments = pointer
+    .slice(1)
+    .split("/")
+    .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
+  let current: unknown = obj;
+  for (const seg of segments) {
+    if (current === null || current === undefined) return undefined;
+    if (Array.isArray(current) && /^\d+$/.test(seg)) {
+      current = current[parseInt(seg, 10)];
+    } else if (typeof current === "object" && seg in (current as object)) {
+      current = (current as Record<string, unknown>)[seg];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+/** Resolve /layers/<id>/... to /layers/<index>/... using style.layers, then get value. */
+function getStyleValueAtPath(style: StyleSpecificationWithId, pointer: string): unknown {
+  const layers = style.layers;
+  if (!Array.isArray(layers)) return getValueByJsonPointer(style, pointer);
+  const segments = pointer
+    .slice(1)
+    .split("/")
+    .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
+  if (segments[0] !== "layers" || segments.length < 2) return getValueByJsonPointer(style, pointer);
+  const layerKey = segments[1];
+  let layerIndex: number;
+  if (/^\d+$/.test(layerKey)) {
+    layerIndex = parseInt(layerKey, 10);
+  } else {
+    const idx = layers.findIndex((l) => (l as { id?: string }).id === layerKey);
+    if (idx < 0) return undefined;
+    layerIndex = idx;
+  }
+  const resolved = "/layers/" + layerIndex + (segments.length > 2 ? "/" + segments.slice(2).join("/") : "");
+  return getValueByJsonPointer(style, resolved);
+}
+
+const MAX_VALUE_DISPLAY = 120;
+
+function formatValueForDisplay(value: unknown): string {
+  if (value === undefined) return "(none)";
+  if (value === null) return "null";
+  const str = typeof value === "object" ? JSON.stringify(value) : String(value);
+  return str.length <= MAX_VALUE_DISPLAY ? str : str.slice(0, MAX_VALUE_DISPLAY) + "…";
+}
+
+/**
+ * Build before/after values for each patch op so the accessibility evaluator can assess concrete changes.
+ */
+function formatPatchBeforeAfter(patch: Operation[], style: StyleSpecificationWithId): string {
+  const layers = style.layers;
+  if (!Array.isArray(layers)) return "";
+  const entries: Array<{ layerId: string; propPath: string; before: string; after: string }> = [];
+  for (const op of patch) {
+    if (!op.path || typeof op.path !== "string" || !op.path.startsWith("/layers/")) continue;
+    const segments = op.path.slice(1).split("/").filter(Boolean);
+    if (segments.length < 3) continue;
+    const layerKey = segments[1].replace(/~1/g, "/").replace(/~0/g, "~");
+    const propPath = segments.slice(2).join(".");
+    const layerIndex = /^\d+$/.test(layerKey) ? parseInt(layerKey, 10) : -1;
+    const layerId =
+      layerIndex >= 0 && layers[layerIndex]
+        ? String((layers[layerIndex] as { id?: string }).id ?? layerKey)
+        : layerKey;
+    const before = getStyleValueAtPath(style, op.path);
+    const after =
+      op.op === "remove" ? "(removed)" : "value" in op ? formatValueForDisplay(op.value) : "(unknown)";
+    entries.push({
+      layerId,
+      propPath,
+      before: formatValueForDisplay(before),
+      after,
+    });
+  }
+  if (entries.length === 0) return "";
+  const lines = entries.map((e) => `• ${e.layerId} ${e.propPath}: ${e.before} → ${e.after}`);
+  return "Before/after values:\n" + lines.join("\n");
+}
+
 /**
  * Build a short summary of which layers and properties were changed by the patch.
  */
@@ -167,6 +253,100 @@ const ANTHROPIC_PROXY_PATH = "/api/anthropic/messages";
 const DEFAULT_MODEL = "claude-3-5-haiku-latest";
 /** Allow long patches (e.g. many layers); increase if responses are truncated (stop_reason: max_tokens). */
 const PATCH_MAX_TOKENS = 8192;
+const EVAL_MAX_TOKENS = 1024;
+
+/**
+ * Call Anthropic Messages API with a custom system and single user message; return assistant text.
+ */
+async function anthropicMessage(params: {
+  system: string;
+  userMessage: string;
+  apiKey?: string;
+  apiUrl?: string;
+  maxTokens?: number;
+}): Promise<string | null> {
+  const {
+    system,
+    userMessage,
+    apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined,
+    apiUrl = (import.meta.env.VITE_ANTHROPIC_API_URL as string | undefined) || (import.meta.env.DEV ? ANTHROPIC_PROXY_PATH : "https://api.anthropic.com/v1/messages"),
+    maxTokens = EVAL_MAX_TOKENS,
+  } = params;
+  const useProxy = apiUrl.startsWith("/");
+  if (!useProxy && !apiKey?.trim()) return null;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "anthropic-version": "2023-06-01",
+  };
+  if (!useProxy && apiKey) headers["x-api-key"] = apiKey;
+  const body = {
+    model: (import.meta.env.VITE_ANTHROPIC_MODEL as string | undefined) || DEFAULT_MODEL,
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: "user" as const, content: userMessage }],
+  };
+  try {
+    const res = await fetch(apiUrl, { method: "POST", headers, body: JSON.stringify(body) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return getTextFromAnthropicResponse(data);
+  } catch {
+    return null;
+  }
+}
+
+const NEUTRAL_DISCLAIMER =
+  "I didn't find any significant benefit or downside in accessibility from these style changes but I can get things wrong. I'm not perfect but my goal is to raise the bar on what to expect in terms of accessibility, not to reach where it actually should be on my own. We'll never get to where things ought to be, and can be, without sustained human attention to the problem.";
+
+/**
+ * Evaluate the accessibility impact of a style change. The model uses its own knowledge
+ * of accessibility standards (e.g. WCAG, W3C WAI) and is instructed to cite sources when possible.
+ */
+export async function evaluateAccessibilityImpact(params: {
+  patchSummary: string;
+  beforeAfterValues?: string;
+  mapContext?: string;
+  apiKey?: string;
+  apiUrl?: string;
+}): Promise<string> {
+  const { patchSummary, beforeAfterValues, mapContext, apiKey, apiUrl } = params;
+
+  const system =
+    "You evaluate map style changes for accessibility impact. Use your knowledge of web and map accessibility (e.g. WCAG 2, W3C WAI, cartographic accessibility). When making recommendations, cite specific guidelines or criteria where possible (e.g. \"WCAG 1.4.3 Contrast (Minimum)\", \"WCAG 1.4.12 Text Spacing\", or \"W3C WAI – [topic]\"). If you reference a standard, include the full name or a stable URL so the user can look it up. Use the before/after values provided to assess concrete impact (e.g. smaller text, lower contrast, removed halos) rather than guessing.";
+
+  const userParts = [
+    "Style change summary:\n" + patchSummary,
+    ...(beforeAfterValues ? [beforeAfterValues] : []),
+    "Evaluate this change for accessibility impact. Reply with one of:",
+    "1) NEGATIVE: If the change could make the map harder to use (e.g. thinner labels, less contrast, reduced spacing). Give a short explanation, cite the relevant guideline or standard when possible, and suggest 1–2 more accessible alternatives.",
+    "2) POSITIVE: If the change improves accessibility. Short note and citation where applicable.",
+    `3) NEUTRAL: If no significant benefit or downside. Use this exact wording: ${NEUTRAL_DISCLAIMER}`,
+  ];
+  if (mapContext?.trim()) userParts.unshift("Map context (purpose and users):\n" + mapContext.trim());
+  const userMessage = userParts.join("\n\n");
+
+  const text = await anthropicMessage({ system, userMessage, apiKey, apiUrl });
+  if (!text?.trim()) return "";
+  return text.trim();
+}
+
+/**
+ * Extract map purpose and user needs from the first 1–3 turns of the conversation.
+ */
+export async function extractMapContext(params: {
+  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  apiKey?: string;
+  apiUrl?: string;
+}): Promise<string | null> {
+  const { conversationHistory, apiKey, apiUrl } = params;
+  const recent = conversationHistory.slice(-6);
+  if (recent.length === 0) return null;
+  const system =
+    "From this conversation about a map style, extract in one short paragraph only if the user has actually described: (1) what this map is for, (2) who the users are and what they need, and/or (3) why the map is being made, what problems it may be solving, or what questions it may be answering. If the user has not shared any of that—e.g. they only asked for a style change like 'make roads red'—output nothing (empty). Output only the paragraph when relevant, no preamble.";
+  const userMessage = recent.map((m) => `${m.role}: ${m.content}`).join("\n\n");
+  const text = await anthropicMessage({ system, userMessage, apiKey, apiUrl });
+  return text?.trim() ?? null;
+}
 
 /**
  * Call Anthropic's Claude API to edit the map style from a natural language prompt.
@@ -180,6 +360,7 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
     apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined,
     apiUrl = (import.meta.env.VITE_ANTHROPIC_API_URL as string | undefined) || (import.meta.env.DEV ? ANTHROPIC_PROXY_PATH : "https://api.anthropic.com/v1/messages"),
     conversationHistory = [],
+    mapContext,
   } = params;
 
   const useProxy = apiUrl.startsWith("/");
@@ -187,7 +368,10 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
     return { ok: false, error: "Missing API key. Set VITE_ANTHROPIC_API_KEY or, in dev, ANTHROPIC_API_KEY on the server." };
   }
 
-  const textContent = `Current style JSON:\n\`\`\`json\n${JSON.stringify(style, null, 2)}\n\`\`\`\n\nUser request: ${prompt}`;
+  let textContent = `Current style JSON:\n\`\`\`json\n${JSON.stringify(style, null, 2)}\n\`\`\`\n\nUser request: ${prompt}`;
+  if (mapContext?.trim()) {
+    textContent = `Map context (purpose and users):\n${mapContext.trim()}\n\n` + textContent;
+  }
   const systemPrompt = getSystemPromptPatch(!!image);
   const recentHistory = conversationHistory.slice(-6).map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
   const currentTurn: { role: "user"; content: string | Array<{ type: "text" | "image"; text?: string; source?: { type: "base64"; media_type: string; data: string } }> } = image
@@ -345,8 +529,19 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
       return { ok: false, error: `Style invalid after patch: ${msg}` };
     }
     const summary = summarizePatch(patch, style);
+    const beforeAfter = formatPatchBeforeAfter(patch, style);
     const prose = extractProseBeforePatch(rawText);
-    const explanation = [prose, summary].filter(Boolean).join("\n\n");
+    let explanation = [prose, summary].filter(Boolean).join("\n\n");
+    const accessibilityNote = await evaluateAccessibilityImpact({
+      patchSummary: summary,
+      beforeAfterValues: beforeAfter || undefined,
+      mapContext,
+      apiKey,
+      apiUrl,
+    });
+    if (accessibilityNote) {
+      explanation = [explanation, "Accessibility:", accessibilityNote].filter(Boolean).join("\n\n");
+    }
     return { ok: true, style: withId, explanation: explanation || undefined };
   }
 

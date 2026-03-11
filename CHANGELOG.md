@@ -1,6 +1,8 @@
 ## main
 
 ### ✨ Features and improvements
+- Style chat: accessibility-guided flow—after each style change the agent evaluates accessibility impact using its own knowledge (e.g. WCAG, W3C WAI); it is instructed to cite specific guidelines or standards when possible; optional disclaimer when impact is minor
+- Style chat: from the first 1–3 prompts, extract map purpose and user needs and send that context with every subsequent edit and accessibility evaluation
 - Style chat: add optional image upload to match map style from a reference image (uses Anthropic vision; attach JPEG/PNG/GIF/WebP)
 - Style chat: use patch-based responses (RFC 6902) and Claude Haiku by default to reduce cost and latency; model returns only JSON Patch ops, applied locally
 - Add chat feature to edit map styles with natural language prompts (uses Claude via Anthropic API). For local dev, the Vite server proxies requests to avoid CORS—set `ANTHROPIC_API_KEY` in `.env` (no client-side key needed)
