@@ -12,7 +12,6 @@ import {
   MdSave,
   MdPublic,
   MdCode,
-  MdChat
 } from "react-icons/md";
 import pkgJson from "../../package.json";
 //@ts-ignore
@@ -236,8 +235,8 @@ class AppToolbarInternal extends React.Component<AppToolbarInternalProps> {
             <IconText>{t("Code Editor")}</IconText>
           </ToolbarAction>
           <ToolbarAction wdKey="nav:chat" onClick={() => this.props.onToggleModal("chat")}>
-            <MdChat />
-            <IconText>{t("Chat")}</IconText>
+            <span className="maputnik-toolbar-sparkles" aria-hidden="true">✨</span>
+            <IconText>{t("AI Chat")}</IconText>
           </ToolbarAction>
           <ToolbarAction wdKey="nav:sources" onClick={() => this.props.onToggleModal("sources")}>
             <MdLayers />
