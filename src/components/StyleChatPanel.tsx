@@ -28,14 +28,14 @@ type StyleChatPanelInternalProps = {
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
-  hadImage?: boolean;
+  imageCount?: number;
 };
 
 type StyleChatPanelState = {
   messages: ChatMessage[];
   loading: boolean;
   input: string;
-  attachedImage: AttachedImage | null;
+  attachedImages: AttachedImage[];
   mapContext: string | null;
 };
 
@@ -49,7 +49,7 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
       messages: [],
       loading: false,
       input: "",
-      attachedImage: null,
+      attachedImages: [],
       mapContext: null,
     };
   }
@@ -65,16 +65,16 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
     const prompt = this.state.input.trim();
     if (!prompt || this.state.loading) return;
 
-    const attachedImage = this.state.attachedImage;
+    const attachedImages = this.state.attachedImages;
     const userMessage: ChatMessage = {
       role: "user",
       content: prompt,
-      hadImage: !!attachedImage,
+      imageCount: attachedImages.length || undefined,
     };
     this.setState((s) => ({
       messages: [...s.messages, userMessage],
       input: "",
-      attachedImage: null,
+      attachedImages: [],
       loading: true,
     }));
 
@@ -83,7 +83,7 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
     const result = await editStyleWithLLM({
       style: this.props.mapStyle,
       prompt,
-      image: attachedImage ?? undefined,
+      images: attachedImages.length ? attachedImages : undefined,
       conversationHistory: history.slice(-6),
       mapContext: this.state.mapContext ?? undefined,
     });
@@ -137,28 +137,40 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
   };
 
   onImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+
     const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const match = dataUrl.match(/^data:(image\/[a-z]+);base64,(.+)$/);
-      if (match) {
-        this.setState({
-          attachedImage: { dataBase64: match[2], mediaType: match[1] },
-        });
-      }
-    };
-    reader.readAsDataURL(file);
+    const MAX_REFERENCE_IMAGES = 5;
+
+    const toRead = files
+      .filter((f) => allowed.includes(f.type))
+      .slice(0, Math.max(0, MAX_REFERENCE_IMAGES - this.state.attachedImages.length));
+
+    const readFileAsAttachedImage = (file: File): Promise<AttachedImage | null> =>
+      new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const match = dataUrl.match(/^data:(image\/[a-z]+);base64,(.+)$/);
+          if (!match) return resolve(null);
+          resolve({ dataBase64: match[2], mediaType: match[1] });
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+
+    Promise.all(toRead.map(readFileAsAttachedImage)).then((images) => {
+      const cleaned = images.filter((x): x is AttachedImage => !!x);
+      if (cleaned.length === 0) return;
+      this.setState((s) => ({ attachedImages: [...s.attachedImages, ...cleaned] }));
+    });
+
     e.target.value = "";
   };
 
-  onClearImage = () => {
-    this.setState({ attachedImage: null });
+  onClearImages = () => {
+    this.setState({ attachedImages: [] });
   };
 
   onAttachImageClick = () => {
@@ -167,7 +179,7 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
 
   render() {
     const t = this.props.t;
-    const { messages, loading, input, attachedImage } = this.state;
+    const { messages, loading, input, attachedImages } = this.state;
 
     return (
       <div className="maputnik-style-chat-panel">
@@ -190,11 +202,13 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
               className={`maputnik-style-chat-panel__message maputnik-style-chat-panel__message--${msg.role}`}
             >
               {msg.content}
-              {msg.hadImage && (
+              {msg.imageCount ? (
                 <span className="maputnik-style-chat-panel__image-badge">
-                  {" "}({t("image attached")})
+                  {" "}
+                  {msg.imageCount === 1 ? t("image attached") : t("images attached")}
+                  {msg.imageCount > 1 ? `: ${msg.imageCount}` : ""}
                 </span>
-              )}
+              ) : null}
             </div>
           ))}
           {loading && (
@@ -227,6 +241,7 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
                 ref={this.imageInputRef}
                 className="maputnik-style-chat-panel__attach-input"
                 type="file"
+                multiple
                 accept="image/jpeg,image/png,image/gif,image/webp"
                 onChange={this.onImageSelect}
                 disabled={loading}
@@ -242,14 +257,14 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
               >
                 <MdImage className="maputnik-style-chat-panel__attach-icon" />
               </button>
-              {attachedImage && (
+              {attachedImages.length > 0 && (
                 <span className="maputnik-style-chat-panel__attached">
-                  {t("Image attached")}
+                  {t("Images attached")}: {attachedImages.length}
                   <button
                     type="button"
                     className="maputnik-style-chat-panel__clear-image"
-                    onClick={this.onClearImage}
-                    aria-label={t("Remove image")}
+                    onClick={this.onClearImages}
+                    aria-label={t("Remove images")}
                   >
                     ×
                   </button>

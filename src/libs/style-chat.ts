@@ -6,7 +6,7 @@ import type { StyleSpecificationWithId } from "./definitions";
 const STYLE_SPEC_REF = "https://maplibre.org/maplibre-style-spec/";
 
 /** System prompt for patch mode: model returns only a JSON Patch (RFC 6902) array. */
-function getSystemPromptPatch(hasImage?: boolean): string {
+function getSystemPromptPatch(hasImages?: boolean): string {
   const base = `You edit MapLibre GL map styles. You receive the current style JSON and a user request. Return ONLY a JSON Patch (RFC 6902) array that, when applied to the style, makes the requested change.
 
 Rules:
@@ -15,10 +15,10 @@ Rules:
 - Use "replace" for existing properties, "add" for new ones. For paint or layout properties that may be missing (e.g. line-dasharray, line-cap), use "add" so the patch works whether the property exists or not. Preserve id, sources, glyphs, sprite unless the user asks to change them.
 - For label overlap: adjust symbol layers' layout/paint (text-size, text-max-width, text-optional, symbol-spacing, text-allow-overlap). Spec: ${STYLE_SPEC_REF}
 - Only include operations that change something.`;
-  if (hasImage) {
+  if (hasImages) {
     return `${base}
 
-When the user attaches a reference map image: analyze the image and produce a JSON Patch that makes the current style match the look of that map as much as possible. Consider colors (water, land, roads, labels), road prominence and line widths, label density and styling, and overall visual style.`;
+When the user attaches one or more reference map images: analyze the images and produce a JSON Patch that makes the current style match the look of those maps as much as possible. Consider colors (water, land, roads, labels), road prominence and line widths, label density and styling, and overall visual style.`;
   }
   return base;
 }
@@ -62,7 +62,7 @@ export type AttachedImage = {
 export type EditStyleParams = {
   style: StyleSpecificationWithId;
   prompt: string;
-  image?: AttachedImage;
+  images?: AttachedImage[];
   apiKey?: string;
   apiUrl?: string;
   conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -356,7 +356,7 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
   const {
     style,
     prompt,
-    image,
+    images,
     apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined,
     apiUrl = (import.meta.env.VITE_ANTHROPIC_API_URL as string | undefined) || (import.meta.env.DEV ? ANTHROPIC_PROXY_PATH : "https://api.anthropic.com/v1/messages"),
     conversationHistory = [],
@@ -372,24 +372,26 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
   if (mapContext?.trim()) {
     textContent = `Map context (purpose and users):\n${mapContext.trim()}\n\n` + textContent;
   }
-  const systemPrompt = getSystemPromptPatch(!!image);
+  const systemPrompt = getSystemPromptPatch(!!images?.length);
   const recentHistory = conversationHistory.slice(-6).map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-  const currentTurn: { role: "user"; content: string | Array<{ type: "text" | "image"; text?: string; source?: { type: "base64"; media_type: string; data: string } }> } = image
-    ? {
-      role: "user",
-      content: [
-        {
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: image.mediaType,
-            data: image.dataBase64,
-          },
-        },
-        { type: "text", text: textContent },
-      ],
-    }
-    : { role: "user", content: textContent };
+  const hasImages = Array.isArray(images) && images.length > 0;
+  const currentTurn: { role: "user"; content: string | Array<{ type: "text" | "image"; text?: string; source?: { type: "base64"; media_type: string; data: string } }> } =
+    hasImages
+      ? {
+        role: "user",
+        content: [
+          ...images!.map((img) => ({
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: img.mediaType,
+              data: img.dataBase64,
+            },
+          })),
+          { type: "text", text: textContent },
+        ],
+      }
+      : { role: "user", content: textContent };
   const messages = [...recentHistory, currentTurn];
 
   const body = {

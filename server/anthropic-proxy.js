@@ -10,7 +10,7 @@
  * Nginx should proxy POST /api/anthropic/messages to this server.
  */
 
-const http = require("http");
+import * as http from "http";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const PROXY_PATH = "/api/anthropic/messages";
