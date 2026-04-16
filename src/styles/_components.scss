@@ -354,6 +354,24 @@
     margin: 0;
   }
 
+  &__error,
+  &__success {
+    margin: vars.$margin-2 vars.$margin-3 0;
+    padding: vars.$margin-2;
+    border-radius: 4px;
+    font-size: vars.$font-size-6;
+  }
+
+  &__error {
+    border: 1px solid vars.$color-red;
+    color: vars.$color-red;
+  }
+
+  &__success {
+    border: 1px solid vars.$color-green;
+    color: vars.$color-lowgray;
+  }
+
   &__message {
     padding: vars.$margin-2 vars.$margin-3;
     border-radius: 4px;
@@ -523,5 +541,124 @@
 
   &__submit {
     flex-shrink: 0;
+  }
+}
+
+.maputnik-style-audit-report {
+  color: vars.$color-lowgray;
+  font-size: vars.$font-size-5;
+  display: flex;
+  flex-direction: column;
+  gap: vars.$margin-2;
+
+  h2 {
+    margin: 0 0 vars.$margin-2;
+    font-size: vars.$font-size-5;
+    color: vars.$color-white;
+    line-height: 1.35;
+  }
+
+  p {
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  &__section {
+    border: 1px solid vars.$color-gray;
+    border-radius: 6px;
+    background: color.adjust(vars.$color-black, $lightness: 2%);
+    padding: vars.$margin-3;
+  }
+
+  &__section--issues {
+    border-left: 3px solid #d27c7c;
+  }
+
+  &__bullet-list {
+    margin: 0;
+    padding-left: vars.$margin-4;
+  }
+
+  &__bullet-item {
+    margin-bottom: vars.$margin-2;
+    line-height: 1.45;
+  }
+
+  &__issue-list {
+    margin: 0;
+    padding-left: vars.$margin-4;
+  }
+
+  &__issue-item {
+    margin-bottom: vars.$margin-2;
+    padding: vars.$margin-2;
+    border: 1px solid vars.$color-gray;
+    border-radius: 4px;
+    background: color.adjust(vars.$color-black, $lightness: 4%);
+    line-height: 1.5;
+  }
+
+  &__issue-meta {
+    display: flex;
+    align-items: center;
+    gap: vars.$margin-2;
+    margin-bottom: vars.$margin-1;
+  }
+
+  &__priority {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #ffb3b3;
+  }
+
+  &__notice {
+    padding: vars.$margin-2;
+    border-radius: 4px;
+    border: 1px dashed vars.$color-lowgray;
+  }
+}
+
+.maputnik-style-audit-suggestions {
+  margin-top: vars.$margin-3;
+  color: vars.$color-lowgray;
+
+  h2 {
+    margin: vars.$margin-2 0;
+    font-size: vars.$font-size-5;
+    color: vars.$color-white;
+  }
+
+  &__item {
+    display: flex;
+    gap: vars.$margin-3;
+    align-items: flex-start;
+    margin-bottom: vars.$margin-2;
+    font-size: vars.$font-size-5;
+    border: 1px solid vars.$color-gray;
+    border-radius: 6px;
+    padding: vars.$margin-2;
+    background: color.adjust(vars.$color-black, $lightness: 2%);
+
+    input {
+      margin-top: 2px;
+    }
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    gap: vars.$margin-1;
+  }
+
+  &__title {
+    color: vars.$color-white;
+    line-height: 1.3;
+  }
+
+  &__reason {
+    line-height: 1.45;
   }
 }

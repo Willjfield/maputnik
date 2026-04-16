@@ -12,6 +12,7 @@ import {
   MdSave,
   MdPublic,
   MdCode,
+  MdAccessibility,
 } from "react-icons/md";
 import pkgJson from "../../package.json";
 //@ts-ignore
@@ -235,8 +236,8 @@ class AppToolbarInternal extends React.Component<AppToolbarInternalProps> {
             <IconText>{t("Code Editor")}</IconText>
           </ToolbarAction>
           <ToolbarAction wdKey="nav:chat" onClick={() => this.props.onToggleModal("chat")}>
-            <span className="maputnik-toolbar-sparkles" aria-hidden="true">✨</span>
-            <IconText>{t("AI Chat")}</IconText>
+            <MdAccessibility className="maputnik-toolbar-a11y-icon" />
+            <IconText>{t("A11y Audit (AI)")}</IconText>
           </ToolbarAction>
           <ToolbarAction wdKey="nav:sources" onClick={() => this.props.onToggleModal("sources")}>
             <MdLayers />

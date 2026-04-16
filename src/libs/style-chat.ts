@@ -73,6 +73,34 @@ export type EditStyleResult =
   | { ok: true; style: StyleSpecificationWithId; explanation?: string }
   | { ok: false; error: string };
 
+export type AccessibilityIssue = {
+  criterion: string;
+  explanation: string;
+};
+
+export type FontsAndSpritesAssessment = {
+  evaluated: boolean;
+  findings: string[];
+  guidance: string[];
+};
+
+export type AccessibilityReport = {
+  helpfulAndDoneWell: string[];
+  standardsNotMet: AccessibilityIssue[];
+  fontsAndSpritesAssessment: FontsAndSpritesAssessment;
+};
+
+export type AccessibilitySuggestion = {
+  id: string;
+  title: string;
+  reason: string;
+  patch: Operation[];
+};
+
+export type AccessibilitySuggestionsResult = {
+  suggestions: AccessibilitySuggestion[];
+};
+
 /**
  * Extract the assistant's reply from Anthropic Messages API response.
  */
@@ -97,6 +125,16 @@ function parseJsonFromResponse(raw: string): unknown {
   const jsonMatch = trimmed.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
   const jsonString = jsonMatch ? jsonMatch[1] : trimmed;
   return JSON.parse(jsonString);
+}
+
+function parseJsonObjectFromResponse(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = parseJsonFromResponse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -328,6 +366,142 @@ export async function evaluateAccessibilityImpact(params: {
   const text = await anthropicMessage({ system, userMessage, apiKey, apiUrl });
   if (!text?.trim()) return "";
   return text.trim();
+}
+
+function toStringArray(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean);
+}
+
+function parseAccessibilityReport(raw: string): AccessibilityReport | null {
+  const obj = parseJsonObjectFromResponse(raw);
+  if (!obj) return null;
+  const helpfulAndDoneWell = toStringArray(obj.helpfulAndDoneWell);
+  const standardsRaw = Array.isArray(obj.standardsNotMet) ? obj.standardsNotMet : [];
+  const standardsNotMet: AccessibilityIssue[] = standardsRaw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const criterion = typeof (entry as Record<string, unknown>).criterion === "string"
+        ? ((entry as Record<string, unknown>).criterion as string).trim()
+        : "";
+      const explanation = typeof (entry as Record<string, unknown>).explanation === "string"
+        ? ((entry as Record<string, unknown>).explanation as string).trim()
+        : "";
+      if (!criterion || !explanation) return null;
+      return { criterion, explanation };
+    })
+    .filter((entry): entry is AccessibilityIssue => !!entry);
+  const fontsRaw = obj.fontsAndSpritesAssessment;
+  const fontsObj = fontsRaw && typeof fontsRaw === "object" ? (fontsRaw as Record<string, unknown>) : {};
+  const fontsAndSpritesAssessment: FontsAndSpritesAssessment = {
+    evaluated: Boolean(fontsObj.evaluated),
+    findings: toStringArray(fontsObj.findings),
+    guidance: toStringArray(fontsObj.guidance),
+  };
+  return {
+    helpfulAndDoneWell,
+    standardsNotMet,
+    fontsAndSpritesAssessment,
+  };
+}
+
+function parseAccessibilitySuggestions(raw: string): AccessibilitySuggestionsResult | null {
+  const obj = parseJsonObjectFromResponse(raw);
+  if (!obj) return null;
+  const suggestionsRaw = Array.isArray(obj.suggestions) ? obj.suggestions : [];
+  const suggestions: AccessibilitySuggestion[] = suggestionsRaw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const e = entry as Record<string, unknown>;
+      const id = typeof e.id === "string" ? e.id.trim() : "";
+      const title = typeof e.title === "string" ? e.title.trim() : "";
+      const reason = typeof e.reason === "string" ? e.reason.trim() : "";
+      const patch = Array.isArray(e.patch) ? (e.patch as Operation[]) : [];
+      if (!id || !title || !reason || patch.length === 0) return null;
+      return { id, title, reason, patch };
+    })
+    .filter((entry): entry is AccessibilitySuggestion => !!entry);
+  return { suggestions };
+}
+
+export async function evaluateStyleAccessibility(params: {
+  style: StyleSpecificationWithId;
+  apiKey?: string;
+  apiUrl?: string;
+}): Promise<AccessibilityReport | null> {
+  const { style, apiKey, apiUrl } = params;
+  const system =
+    "You are a map style accessibility reviewer. Evaluate this MapLibre style against WCAG 2.2 and practical cartographic accessibility principles. Return only JSON with keys: helpfulAndDoneWell (string[]), standardsNotMet ({criterion:string, explanation:string}[]), fontsAndSpritesAssessment ({evaluated:boolean, findings:string[], guidance:string[]}). For fontsAndSpritesAssessment, if you cannot verify full external font/sprite resources, set evaluated to false and include clear guidance for accessible icon and font design.";
+  const userMessage =
+    "Review this style JSON and provide an accessibility report.\n\nStyle JSON:\n```json\n" + JSON.stringify(style, null, 2) + "\n```";
+  const text = await anthropicMessage({
+    system,
+    userMessage,
+    apiKey,
+    apiUrl,
+    maxTokens: 4096,
+  });
+  if (!text) return null;
+  return parseAccessibilityReport(text);
+}
+
+export async function suggestAccessibilityStyleChanges(params: {
+  style: StyleSpecificationWithId;
+  report: AccessibilityReport;
+  apiKey?: string;
+  apiUrl?: string;
+}): Promise<AccessibilitySuggestionsResult | null> {
+  const { style, report, apiKey, apiUrl } = params;
+  const system =
+    "You propose accessibility improvements for a MapLibre style. Return only JSON with shape: {\"suggestions\":[{\"id\":\"string\",\"title\":\"string\",\"reason\":\"string\",\"patch\":[RFC6902 ops]}]}. Each suggestion patch should be focused and small. Paths may use /layers/<layer_id>/... and should only change style properties relevant to accessibility improvements.";
+  const userMessage =
+    "Accessibility report:\n```json\n" + JSON.stringify(report, null, 2) + "\n```\n\nCurrent style:\n```json\n" + JSON.stringify(style, null, 2) + "\n```\n\nReturn suggestions that address standardsNotMet and improve readability, contrast, and legibility.";
+  const text = await anthropicMessage({
+    system,
+    userMessage,
+    apiKey,
+    apiUrl,
+    maxTokens: 4096,
+  });
+  if (!text) return null;
+  const parsed = parseAccessibilitySuggestions(text);
+  if (!parsed) return null;
+  return {
+    suggestions: parsed.suggestions.map((suggestion) => ({
+      ...suggestion,
+      patch: resolveLayerIdsInPatch(style, suggestion.patch),
+    })),
+  };
+}
+
+export function applySelectedAccessibilityChanges(params: {
+  style: StyleSpecificationWithId;
+  suggestions: AccessibilitySuggestion[];
+  selectedSuggestionIds: string[];
+}): EditStyleResult {
+  const { style, suggestions, selectedSuggestionIds } = params;
+  const selected = new Set(selectedSuggestionIds);
+  const selectedSuggestions = suggestions.filter((s) => selected.has(s.id));
+  if (selectedSuggestions.length === 0) {
+    return { ok: true, style, explanation: "No selected accessibility changes to apply." };
+  }
+  const patch = selectedSuggestions.flatMap((s) => s.patch);
+  const styleCopy = cloneDeep(style) as Record<string, unknown>;
+  try {
+    applyPatch(styleCopy, patch, true, true);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Patch failed: ${message}` };
+  }
+  const withId = { ...styleCopy, id: (styleCopy.id as string) || style.id } as StyleSpecificationWithId;
+  const errList: Array<{ message?: string }> =
+    (validateStyleMin(withId) as Array<{ message?: string }> | undefined) ?? [];
+  if (errList.length > 0) {
+    const msg = errList[0]?.message ?? "Invalid style after patch.";
+    return { ok: false, error: `Style invalid after patch: ${msg}` };
+  }
+  const appliedTitles = selectedSuggestions.map((s) => s.title).join(", ");
+  return { ok: true, style: withId, explanation: `Applied accessibility changes: ${appliedTitles}` };
 }
 
 /**

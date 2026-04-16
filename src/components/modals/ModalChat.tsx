@@ -5,8 +5,8 @@ import StyleChatPanel from "../StyleChatPanel";
 import type { StyleSpecificationWithId } from "../../libs/definitions";
 import type { OnStyleChangedCallback } from "../../libs/definitions";
 
-const DEFAULT_X = 80;
-const DEFAULT_Y = 24;
+const DEFAULT_X = window.innerWidth * .6667;
+const DEFAULT_Y = 56;
 
 type ModalChatInternalProps = {
   isOpen: boolean;
@@ -87,7 +87,7 @@ class ModalChatInternal extends React.Component<ModalChatInternalProps, ModalCha
         className="maputnik-chat-float"
         data-wd-key="modal:chat"
         role="dialog"
-        aria-label={t("Edit style with AI")}
+        aria-label={t("Accessibility audit with AI")}
         style={{ left: this.state.x, top: this.state.y }}
       >
         <div className="maputnik-modal maputnik-modal-chat">
@@ -95,7 +95,7 @@ class ModalChatInternal extends React.Component<ModalChatInternalProps, ModalCha
             className="maputnik-modal-header maputnik-chat-float__titlebar"
             onMouseDown={this.onTitleMouseDown}
           >
-            <h1 className="maputnik-modal-header-title">{t("Edit style with AI")}</h1>
+            <h1 className="maputnik-modal-header-title">{t("Accessibility audit with AI")}</h1>
             <span className="maputnik-space" />
             <button
               type="button"
