@@ -1,4 +1,5 @@
 import React from "react";
+import hash from "string-hash";
 import { withTranslation, type WithTranslation } from "react-i18next";
 import type { StyleSpecificationWithId } from "../libs/definitions";
 import type { OnStyleChangedCallback } from "../libs/definitions";
@@ -27,6 +28,9 @@ type StyleChatPanelState = {
 };
 
 class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps, StyleChatPanelState> {
+  private reportCache = new Map<number, AccessibilityReport>();
+  private suggestionsCache = new Map<number, AccessibilitySuggestion[]>();
+
   constructor(props: StyleChatPanelInternalProps) {
     super(props);
     this.state = {
@@ -41,8 +45,23 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
     };
   }
 
+  getStyleHash = (): number => hash(JSON.stringify(this.props.mapStyle));
+
   onEvaluate = async () => {
     if (this.state.loading) return;
+    const styleHash = this.getStyleHash();
+    const cachedReport = this.reportCache.get(styleHash);
+    if (cachedReport) {
+      this.setState({
+        report: cachedReport,
+        suggestions: this.suggestionsCache.get(styleHash) ?? [],
+        selectedSuggestionIds: (this.suggestionsCache.get(styleHash) ?? []).map((s) => s.id),
+        loading: false,
+        error: null,
+        success: null,
+      });
+      return;
+    }
     this.setState({ loading: true, error: null, success: null });
     const report = await evaluateStyleAccessibility({ style: this.props.mapStyle });
     if (!report) {
@@ -52,6 +71,7 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
       });
       return;
     }
+    this.reportCache.set(styleHash, report);
     this.setState({
       report,
       suggestions: [],
@@ -64,6 +84,18 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
   onSuggestChanges = async () => {
     const { report, loadingSuggestions } = this.state;
     if (!report || loadingSuggestions) return;
+    const styleHash = this.getStyleHash();
+    const cachedSuggestions = this.suggestionsCache.get(styleHash);
+    if (cachedSuggestions) {
+      this.setState({
+        suggestions: cachedSuggestions,
+        selectedSuggestionIds: cachedSuggestions.map((s) => s.id),
+        loadingSuggestions: false,
+        error: null,
+        success: null,
+      });
+      return;
+    }
     this.setState({ loadingSuggestions: true, error: null, success: null });
     const result = await suggestAccessibilityStyleChanges({
       style: this.props.mapStyle,
@@ -76,6 +108,7 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
       });
       return;
     }
+    this.suggestionsCache.set(styleHash, result.suggestions);
     this.setState({
       suggestions: result.suggestions,
       selectedSuggestionIds: result.suggestions.map((s) => s.id),
@@ -136,6 +169,13 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
     } = this.state;
     const hasSuggestions = suggestions.length > 0;
     const canApply = selectedSuggestionIds.length > 0 && !applyingChanges;
+    const loadingMessage = loading
+      ? t("Evaluating style for accessibility...")
+      : loadingSuggestions
+        ? t("Generating accessibility suggestions...")
+        : applyingChanges
+          ? t("Applying selected accessibility changes...")
+          : null;
 
     return (
       <div className="maputnik-style-chat-panel">
@@ -147,6 +187,12 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
           )}
           {error && <div className="maputnik-style-chat-panel__error">{error}</div>}
           {success && <div className="maputnik-style-chat-panel__success">{success}</div>}
+          {loadingMessage && (
+            <div className="maputnik-style-chat-panel__loading-status" role="status" aria-live="polite">
+              <span className="maputnik-style-chat-panel__thinking-spinner" aria-hidden="true" />
+              <span>{loadingMessage}</span>
+            </div>
+          )}
           {report && (
             <div className="maputnik-style-audit-report">
               <section className="maputnik-style-audit-report__section">
@@ -223,6 +269,15 @@ class StyleChatPanelInternal extends React.Component<StyleChatPanelInternalProps
                   </span>
                 </label>
               ))}
+            </div>
+          )}
+          {report && loadingSuggestions && !hasSuggestions && (
+            <div className="maputnik-style-audit-suggestions">
+              <h2>{t("Suggested accessibility changes")}</h2>
+              <div className="maputnik-style-chat-panel__loading-status" role="status" aria-live="polite">
+                <span className="maputnik-style-chat-panel__thinking-spinner" aria-hidden="true" />
+                <span>{t("Formulating accessibility suggestions...")}</span>
+              </div>
             </div>
           )}
         </div>

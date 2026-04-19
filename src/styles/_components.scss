@@ -372,6 +372,19 @@
     color: vars.$color-lowgray;
   }
 
+  &__loading-status {
+    display: inline-flex;
+    align-items: center;
+    gap: vars.$margin-2;
+    margin: vars.$margin-2 vars.$margin-3 0;
+    padding: vars.$margin-2 vars.$margin-3;
+    border: 1px solid vars.$color-gray;
+    border-radius: 4px;
+    color: vars.$color-lowgray;
+    background: color.adjust(vars.$color-black, $lightness: 3%);
+    font-size: vars.$font-size-6;
+  }
+
   &__message {
     padding: vars.$margin-2 vars.$margin-3;
     border-radius: 4px;

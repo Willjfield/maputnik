@@ -289,9 +289,120 @@ const ANTHROPIC_PROXY_PATH = "/api/anthropic/messages";
 
 /** Default to Haiku for lower cost/latency; override with VITE_ANTHROPIC_MODEL. */
 const DEFAULT_MODEL = "claude-3-5-haiku-latest";
-/** Allow long patches (e.g. many layers); increase if responses are truncated (stop_reason: max_tokens). */
-const PATCH_MAX_TOKENS = 8192;
-const EVAL_MAX_TOKENS = 1024;
+const PATCH_MAX_TOKENS = 4096;
+const EVAL_MAX_TOKENS = 900;
+const REPORT_MAX_TOKENS = 2200;
+const SUGGESTIONS_MAX_TOKENS = 2200;
+
+type CompactLayer = {
+  id: string;
+  type: string;
+  source?: string;
+  sourceLayer?: string;
+  minzoom?: number;
+  maxzoom?: number;
+  layout?: Record<string, unknown>;
+  paint?: Record<string, unknown>;
+};
+
+const LAYER_PROPERTY_WHITELIST = new Set([
+  "visibility",
+  "text-field",
+  "text-font",
+  "text-size",
+  "text-max-width",
+  "text-letter-spacing",
+  "text-line-height",
+  "text-allow-overlap",
+  "text-ignore-placement",
+  "text-padding",
+  "symbol-spacing",
+  "icon-image",
+  "icon-size",
+  "icon-allow-overlap",
+  "line-color",
+  "line-width",
+  "line-opacity",
+  "line-blur",
+  "fill-color",
+  "fill-opacity",
+  "fill-outline-color",
+  "circle-color",
+  "circle-radius",
+  "circle-stroke-color",
+  "circle-stroke-width",
+  "circle-opacity",
+  "text-color",
+  "text-halo-color",
+  "text-halo-width",
+  "text-halo-blur",
+  "icon-color",
+  "icon-opacity",
+  "icon-halo-color",
+  "icon-halo-width",
+]);
+
+function pickWhitelistedProperties(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== "object") return {};
+  const out: Record<string, unknown> = {};
+  Object.entries(input as Record<string, unknown>).forEach(([key, value]) => {
+    if (LAYER_PROPERTY_WHITELIST.has(key)) out[key] = compactValue(value);
+  });
+  return out;
+}
+
+function compactValue(value: unknown, depth = 0): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") {
+    return value.length > 120 ? value.slice(0, 117) + "..." : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= 2) return "[truncated]";
+  if (Array.isArray(value)) {
+    const trimmed = value.slice(0, 8).map((v) => compactValue(v, depth + 1));
+    if (value.length > 8) trimmed.push(`...(+${value.length - 8} more)`);
+    return trimmed;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).slice(0, 10);
+    const obj: Record<string, unknown> = {};
+    entries.forEach(([k, v]) => {
+      obj[k] = compactValue(v, depth + 1);
+    });
+    if (Object.keys(value as Record<string, unknown>).length > 10) {
+      obj.__truncated_keys = Object.keys(value as Record<string, unknown>).length - 10;
+    }
+    return obj;
+  }
+  return String(value);
+}
+
+function buildCompactStyleForA11y(style: StyleSpecificationWithId): Record<string, unknown> {
+  const layers = Array.isArray(style.layers) ? style.layers : [];
+  const compactLayers: CompactLayer[] = layers
+    .filter((layer) => ["symbol", "line", "fill", "circle"].includes(layer.type))
+    .slice(0, 140)
+    .map((layer) => ({
+      id: layer.id,
+      type: layer.type,
+      source: "source" in layer ? layer.source : undefined,
+      sourceLayer: "source-layer" in layer ? (layer as Record<string, unknown>)["source-layer"] as string : undefined,
+      minzoom: "minzoom" in layer ? layer.minzoom : undefined,
+      maxzoom: "maxzoom" in layer ? layer.maxzoom : undefined,
+      layout: pickWhitelistedProperties("layout" in layer ? layer.layout : undefined),
+      paint: pickWhitelistedProperties("paint" in layer ? layer.paint : undefined),
+    }));
+
+  return {
+    id: style.id,
+    name: style.name,
+    glyphs: style.glyphs,
+    sprite: style.sprite,
+    layerCount: layers.length,
+    evaluatedLayers: compactLayers.length,
+    layers: compactLayers,
+  };
+}
 
 /**
  * Call Anthropic Messages API with a custom system and single user message; return assistant text.
@@ -431,15 +542,16 @@ export async function evaluateStyleAccessibility(params: {
 }): Promise<AccessibilityReport | null> {
   const { style, apiKey, apiUrl } = params;
   const system =
-    "You are a map style accessibility reviewer. Evaluate this MapLibre style against WCAG 2.2 and practical cartographic accessibility principles. Return only JSON with keys: helpfulAndDoneWell (string[]), standardsNotMet ({criterion:string, explanation:string}[]), fontsAndSpritesAssessment ({evaluated:boolean, findings:string[], guidance:string[]}). For fontsAndSpritesAssessment, if you cannot verify full external font/sprite resources, set evaluated to false and include clear guidance for accessible icon and font design.";
+    "You are a map style accessibility reviewer. Evaluate this MapLibre style against WCAG 2.2 and practical cartographic accessibility principles. Return only compact JSON with keys: helpfulAndDoneWell (string[]), standardsNotMet ({criterion:string, explanation:string}[]), fontsAndSpritesAssessment ({evaluated:boolean, findings:string[], guidance:string[]}). Hard limits: helpfulAndDoneWell max 5 items, standardsNotMet max 6 items, findings max 4 items, guidance max 5 items. Keep each explanation under 180 characters. Output raw JSON only, no markdown fences.";
+  const compactStyle = buildCompactStyleForA11y(style);
   const userMessage =
-    "Review this style JSON and provide an accessibility report.\n\nStyle JSON:\n```json\n" + JSON.stringify(style, null, 2) + "\n```";
+    "Review this compact style snapshot and provide an accessibility report.\n\nStyle snapshot:\n```json\n" + JSON.stringify(compactStyle) + "\n```";
   const text = await anthropicMessage({
     system,
     userMessage,
     apiKey,
     apiUrl,
-    maxTokens: 4096,
+    maxTokens: REPORT_MAX_TOKENS,
   });
   if (!text) return null;
   return parseAccessibilityReport(text);
@@ -453,15 +565,16 @@ export async function suggestAccessibilityStyleChanges(params: {
 }): Promise<AccessibilitySuggestionsResult | null> {
   const { style, report, apiKey, apiUrl } = params;
   const system =
-    "You propose accessibility improvements for a MapLibre style. Return only JSON with shape: {\"suggestions\":[{\"id\":\"string\",\"title\":\"string\",\"reason\":\"string\",\"patch\":[RFC6902 ops]}]}. Each suggestion patch should be focused and small. Paths may use /layers/<layer_id>/... and should only change style properties relevant to accessibility improvements.";
+    "You propose accessibility improvements for a MapLibre style. Return only compact JSON with shape: {\"suggestions\":[{\"id\":\"string\",\"title\":\"string\",\"reason\":\"string\",\"patch\":[RFC6902 ops]}]}. Return at most 8 suggestions. Each patch should be focused and small. Paths may use /layers/<layer_id>/... and should only change style properties relevant to accessibility improvements.";
+  const compactStyle = buildCompactStyleForA11y(style);
   const userMessage =
-    "Accessibility report:\n```json\n" + JSON.stringify(report, null, 2) + "\n```\n\nCurrent style:\n```json\n" + JSON.stringify(style, null, 2) + "\n```\n\nReturn suggestions that address standardsNotMet and improve readability, contrast, and legibility.";
+    "Accessibility report:\n```json\n" + JSON.stringify(report) + "\n```\n\nCurrent compact style snapshot:\n```json\n" + JSON.stringify(compactStyle) + "\n```\n\nReturn suggestions that address standardsNotMet and improve readability, contrast, and legibility.";
   const text = await anthropicMessage({
     system,
     userMessage,
     apiKey,
     apiUrl,
-    maxTokens: 4096,
+    maxTokens: SUGGESTIONS_MAX_TOKENS,
   });
   if (!text) return null;
   const parsed = parseAccessibilitySuggestions(text);
@@ -542,7 +655,8 @@ export async function editStyleWithLLM(params: EditStyleParams): Promise<EditSty
     return { ok: false, error: "Missing API key. Set VITE_ANTHROPIC_API_KEY or, in dev, ANTHROPIC_API_KEY on the server." };
   }
 
-  let textContent = `Current style JSON:\n\`\`\`json\n${JSON.stringify(style, null, 2)}\n\`\`\`\n\nUser request: ${prompt}`;
+  const compactStyle = buildCompactStyleForA11y(style);
+  let textContent = `Current style snapshot:\n\`\`\`json\n${JSON.stringify(compactStyle)}\n\`\`\`\n\nUser request: ${prompt}`;
   if (mapContext?.trim()) {
     textContent = `Map context (purpose and users):\n${mapContext.trim()}\n\n` + textContent;
   }
